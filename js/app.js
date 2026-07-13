@@ -170,6 +170,10 @@ const App = {
       }
     });
 
+    document.querySelectorAll("#reportFormModal .place-search-chips .chip").forEach((chip) => {
+      chip.addEventListener("click", () => App.runReportCategorySearch(chip.dataset.category, chip));
+    });
+
     document.getElementById("reportSearchResults")?.addEventListener("click", (e) => {
       const item = e.target.closest("[data-result-index]");
       if (!item) return;
@@ -198,6 +202,21 @@ const App = {
     } finally {
       btn.disabled = false;
       btn.textContent = "🔍 Search";
+    }
+  },
+
+  async runReportCategorySearch(category, chipEl) {
+    document.querySelectorAll("#reportFormModal .place-search-chips .chip").forEach((c) => (c.disabled = true));
+    App.renderReportSearchResults(null, "Searching nearby…");
+    try {
+      const center = await App.getPlaceSearchCenter(App.selectedLatLng);
+      if (!center) throw new Error("Could not determine a location to search near.");
+      const results = await PlacesSearch.searchCategory(category, center, 5);
+      App.renderReportSearchResults(results, results.length === 0 ? "No results found within 5km." : null);
+    } catch (e) {
+      App.renderReportSearchResults(null, e.message);
+    } finally {
+      document.querySelectorAll("#reportFormModal .place-search-chips .chip").forEach((c) => (c.disabled = false));
     }
   },
 
@@ -398,7 +417,7 @@ const App = {
       }
     });
 
-    document.querySelectorAll(".place-search-chips .chip").forEach((chip) => {
+    document.querySelectorAll("#facilityFormModal .place-search-chips .chip").forEach((chip) => {
       chip.addEventListener("click", () => App.runFacilityCategorySearch(chip.dataset.category, chip));
     });
 
@@ -451,7 +470,7 @@ const App = {
   },
 
   async runFacilityCategorySearch(category, chipEl) {
-    document.querySelectorAll(".place-search-chips .chip").forEach((c) => (c.disabled = true));
+    document.querySelectorAll("#facilityFormModal .place-search-chips .chip").forEach((c) => (c.disabled = true));
     App.renderFacilitySearchResults(null, "Searching nearby…");
     try {
       const center = await App.getPlaceSearchCenter(App.selectedFacilityLatLng);
@@ -461,7 +480,7 @@ const App = {
     } catch (e) {
       App.renderFacilitySearchResults(null, e.message);
     } finally {
-      document.querySelectorAll(".place-search-chips .chip").forEach((c) => (c.disabled = false));
+      document.querySelectorAll("#facilityFormModal .place-search-chips .chip").forEach((c) => (c.disabled = false));
     }
   },
 
