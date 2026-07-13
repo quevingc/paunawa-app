@@ -136,7 +136,7 @@ const MapModule = {
       const marker = L.marker([f.lat, f.lng], { icon }).bindPopup(
         `<div class="map-popup">
            <strong>${info.icon} ${Utils.escapeHTML(f.name)}</strong><br/>${info.label}${
-          f.capacity ? `<br/>Capacity: ${f.capacity}` : ""
+          f.capacity ? `<br/>Capacity: ${Utils.escapeHTML(f.capacity)}` : ""
         }${f.contact ? `<br/>Contact: ${Utils.escapeHTML(f.contact)}` : ""}
            <br/><button class="btn-link" data-open-facility="${f.facilityId}">View details →</button>
          </div>`

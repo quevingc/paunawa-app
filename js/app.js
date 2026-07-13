@@ -112,7 +112,7 @@ const App = {
           <span class="dot" style="background:${info.color}"></span>
           <div class="report-list-item-body">
             <strong>${info.icon} ${Utils.escapeHTML(f.name)}</strong>
-            <span class="muted">${info.label}${f.capacity ? ` · Capacity ${f.capacity}` : ""}</span>
+            <span class="muted">${info.label}${f.capacity ? ` · Capacity ${Utils.escapeHTML(f.capacity)}` : ""}</span>
           </div>
           <div class="report-list-item-meta">
             <span class="badge-outline">✔ ${f.upvotes || 0}</span>
@@ -438,7 +438,7 @@ const App = {
       </div>
       <ul class="detail-meta">
         <li><strong>Name:</strong> ${Utils.escapeHTML(facility.name)}</li>
-        <li><strong>Capacity:</strong> ${facility.capacity || "—"}</li>
+        <li><strong>Capacity:</strong> ${facility.capacity ? Utils.escapeHTML(facility.capacity) : "—"}</li>
         <li><strong>Contact:</strong> ${Utils.escapeHTML(facility.contact || "—")}</li>
         <li><strong>Added:</strong> ${Utils.formatDate(facility.timestamp)}</li>
         <li><strong>Last updated:</strong> ${Utils.formatDate(facility.lastUpdated)}</li>
