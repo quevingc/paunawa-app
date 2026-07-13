@@ -164,13 +164,14 @@ const Api = {
     throw new Error("uploadImageMeta is not supported directly — attach images via createReport/updateReport.");
   },
 
-  async moderateReport(reportId, moderatorId, action, reason) {
+  async moderateReport(reportId, moderatorId, action, reason, pin) {
     const sb = requireClient_();
     const { data, error } = await sb.rpc("moderate_report", {
       p_report_id: reportId,
       p_moderator_id: moderatorId,
       p_action: action,
       p_reason: reason,
+      p_pin: pin,
     });
     if (error) throw new Error(error.message);
     const [withImages] = await attachImages_([data], "report_id");
@@ -266,13 +267,14 @@ const Api = {
     return data;
   },
 
-  async moderateFacility(facilityId, moderatorId, action, reason) {
+  async moderateFacility(facilityId, moderatorId, action, reason, pin) {
     const sb = requireClient_();
     const { data, error } = await sb.rpc("moderate_facility", {
       p_facility_id: facilityId,
       p_moderator_id: moderatorId,
       p_action: action,
       p_reason: reason,
+      p_pin: pin,
     });
     if (error) throw new Error(error.message);
     const [withImages] = await attachImages_([data], "facility_id");

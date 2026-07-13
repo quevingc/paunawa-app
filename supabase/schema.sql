@@ -71,6 +71,8 @@ create table if not exists updates (
 create index if not exists idx_updates_record on updates(record_id);
 
 -- ---------- Ratings ----------
+-- One rating per (report, user): submit_rating() upserts on this key so a
+-- single device cannot stuff the average by rating the same report repeatedly.
 create table if not exists ratings (
   id bigserial primary key,
   rating_id text unique not null,
@@ -80,9 +82,29 @@ create table if not exists ratings (
   authenticity int not null,
   usefulness int not null,
   "timestamp" text not null,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  unique (report_id, user_id)
 );
 create index if not exists idx_ratings_report on ratings(report_id);
+-- Backfill the constraint on databases created before this column existed.
+-- (No-op on fresh installs where the inline UNIQUE above already applied.)
+do $$ begin
+  alter table ratings add constraint ratings_report_user_uniq unique (report_id, user_id);
+exception when duplicate_table then null; when duplicate_object then null; end $$;
+
+-- ---------- Upvotes (per-user ledger; the reports/facilities.upvotes column
+-- is just a cached counter) ----------
+-- record_id is generic: a reports.report_id OR a facilities.facility_id.
+-- upvote_report()/upvote_facility() insert here on-conflict-do-nothing and
+-- only bump the counter when a NEW row lands, making upvotes idempotent per user.
+create table if not exists upvotes (
+  id bigserial primary key,
+  record_id text not null,
+  user_id text not null default 'anonymous',
+  created_at timestamptz default now(),
+  unique (record_id, user_id)
+);
+create index if not exists idx_upvotes_record on upvotes(record_id);
 
 -- ---------- Users (anonymous device registry — no PII, no auth) ----------
 create table if not exists users (
@@ -126,9 +148,20 @@ create table if not exists settings (
   key text primary key,
   value text not null
 );
-insert into settings (key, value) values ('adminPin', 'changeme123')
+-- adminPin is stored as a bcrypt hash (pgcrypto crypt/gen_salt), never plaintext,
+-- and verified server-side by verify_admin_pin() / _check_admin(). We intentionally
+-- seed an UNGUESSABLE random hash so there is NO usable default PIN — the admin must
+-- set a real one before moderation works:
+--   update settings set value = crypt('YOUR_REAL_PIN', gen_salt('bf')) where key = 'adminPin';
+insert into settings (key, value) values ('adminPin', crypt(gen_random_uuid()::text, gen_salt('bf')))
   on conflict (key) do nothing;
 insert into settings (key, value) values ('appName', 'Paunawa')
+  on conflict (key) do nothing;
+-- Optional strict image-URL allowlist. When non-empty, uploaded image URLs must
+-- start with this exact prefix (set it to your project's public bucket URL, e.g.
+-- https://<ref>.supabase.co/storage/v1/object/public/report-images/). When empty,
+-- _valid_image_url() falls back to a generic supabase.co/report-images pattern.
+insert into settings (key, value) values ('storageUrlPrefix', '')
   on conflict (key) do nothing;
 
 -- ---------- Seed sample facilities ----------
@@ -155,6 +188,9 @@ alter table users enable row level security;
 alter table blockchain enable row level security;
 alter table images enable row level security;
 alter table settings enable row level security;
+-- upvotes: no policies at all, so anon can neither read nor write it directly.
+-- Only the SECURITY DEFINER upvote_* functions touch it.
+alter table upvotes enable row level security;
 
 create policy "public read non-hidden reports" on reports
   for select using (hidden = false);

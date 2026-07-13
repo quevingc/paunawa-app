@@ -44,6 +44,72 @@ begin
 end;
 $$;
 
+-- Raise 'Unauthorized' unless p_pin matches the bcrypt-hashed admin PIN in
+-- settings. SECURITY DEFINER so it can read settings (which anon cannot select).
+-- Called at the top of every moderation function so the PIN check happens
+-- server-side, not just in the UI.
+create or replace function _check_admin(p_pin text) returns void
+language plpgsql security definer as $$
+declare
+  v_stored text;
+begin
+  select value into v_stored from settings where key = 'adminPin';
+  if v_stored is null or p_pin is null or v_stored <> crypt(p_pin, v_stored) then
+    raise exception 'Unauthorized';
+  end if;
+end;
+$$;
+
+-- Only accept image URLs that point at this project's public storage bucket.
+-- If settings.storageUrlPrefix is set, require an exact prefix match; otherwise
+-- fall back to a generic supabase.co / report-images pattern. Blocks direct RPC
+-- callers from injecting arbitrary external URLs into the images table.
+create or replace function _valid_image_url(p_url text) returns boolean
+language plpgsql security definer as $$
+declare
+  v_prefix text;
+begin
+  if p_url is null then return false; end if;
+  select value into v_prefix from settings where key = 'storageUrlPrefix';
+  if v_prefix is not null and length(v_prefix) > 0 then
+    return left(p_url, length(v_prefix)) = v_prefix;
+  end if;
+  return p_url ~ '^https://[a-z0-9-]+\.supabase\.co/storage/v1/object/public/report-images/';
+end;
+$$;
+
+-- Server-side enum allowlists (mirror CONFIG.EMERGENCY_TYPES / STATUS / FACILITIES
+-- in js/config.js). Enforced in create/update so a direct RPC call can't bypass
+-- the client's dropdowns.
+create or replace function _is_valid_report_type(t text) returns boolean
+language sql immutable as $$
+  select t = any (array['flood','earthquake','conflict','fire','landslide','storm','other']);
+$$;
+
+create or replace function _is_valid_status(s text) returns boolean
+language sql immutable as $$
+  select s = any (array['Active','Monitoring','Resolved']);
+$$;
+
+create or replace function _is_valid_facility_type(t text) returns boolean
+language sql immutable as $$
+  select t = any (array['evacuation','hospital','other']);
+$$;
+
+-- Reject if any element of a jsonb image array is not a valid bucket URL.
+create or replace function _assert_valid_images(p_images jsonb) returns void
+language plpgsql as $$
+begin
+  if p_images is null then return; end if;
+  if exists (
+    select 1 from jsonb_array_elements_text(p_images) as img
+    where not _valid_image_url(img)
+  ) then
+    raise exception 'Invalid image URL';
+  end if;
+end;
+$$;
+
 -- Append one block to the hash chain for a report or facility.
 -- record_id is generic: a reports.report_id OR a facilities.facility_id.
 create or replace function _append_block(p_record_id text, p_action text, p_editor_id text, p_payload_text text)
@@ -79,7 +145,21 @@ declare
   v_now text := _now_iso();
   v_row reports;
   v_payload text;
+  v_desc text := coalesce(p_report->>'description', '');
 begin
+  -- Server-side validation (client checks are UX only; this is the real gate).
+  if not _is_valid_report_type(p_report->>'type') then
+    raise exception 'Invalid report type';
+  end if;
+  if (p_report->>'lat')::double precision not between -90 and 90
+     or (p_report->>'lng')::double precision not between -180 and 180 then
+    raise exception 'Coordinates out of range';
+  end if;
+  if length(trim(v_desc)) < 10 or length(v_desc) > 1000 then
+    raise exception 'Description must be 10-1000 characters';
+  end if;
+  perform _assert_valid_images(p_report->'images');
+
   insert into reports(report_id, "timestamp", last_updated, type, status, lat, lng, description, reporter_alias, editor_id, image_count)
   values (
     v_report_id,
@@ -121,6 +201,25 @@ declare
 begin
   select * into v_existing from reports where report_id = p_report_id;
   if not found then raise exception 'Report not found.'; end if;
+
+  -- Validate any fields being changed (mirrors create_report).
+  if p_changes ? 'type' and not _is_valid_report_type(p_changes->>'type') then
+    raise exception 'Invalid report type';
+  end if;
+  if p_changes ? 'status' and not _is_valid_status(p_changes->>'status') then
+    raise exception 'Invalid status';
+  end if;
+  if p_changes ? 'lat' and (p_changes->>'lat')::double precision not between -90 and 90 then
+    raise exception 'Latitude out of range';
+  end if;
+  if p_changes ? 'lng' and (p_changes->>'lng')::double precision not between -180 and 180 then
+    raise exception 'Longitude out of range';
+  end if;
+  if p_changes ? 'description'
+     and (length(trim(p_changes->>'description')) < 10 or length(p_changes->>'description') > 1000) then
+    raise exception 'Description must be 10-1000 characters';
+  end if;
+  perform _assert_valid_images(p_changes->'images');
 
   if p_changes ? 'description' and (p_changes->>'description') is distinct from v_existing.description then
     v_new_text := _sanitize(p_changes->>'description');
@@ -178,20 +277,40 @@ $$;
 create or replace function upvote_report(p_report_id text, p_user_id text) returns jsonb
 language plpgsql security definer as $$
 declare
+  v_uid text := coalesce(p_user_id, 'anonymous');
+  v_rows int;
   v_new int;
 begin
-  update reports set upvotes = upvotes + 1 where report_id = p_report_id returning upvotes into v_new;
+  perform 1 from reports where report_id = p_report_id;
   if not found then raise exception 'Report not found.'; end if;
-  perform _append_block(p_report_id, 'UPVOTE', coalesce(p_user_id, 'anonymous'), jsonb_build_object('upvotes', v_new)::text);
-  return jsonb_build_object('upvotes', v_new);
+
+  -- One upvote per (report, user): the ledger insert is a no-op on repeat.
+  insert into upvotes(record_id, user_id) values (p_report_id, v_uid)
+  on conflict (record_id, user_id) do nothing;
+  get diagnostics v_rows = row_count;
+
+  if v_rows > 0 then
+    update reports set upvotes = upvotes + 1 where report_id = p_report_id returning upvotes into v_new;
+    perform _append_block(p_report_id, 'UPVOTE', v_uid, jsonb_build_object('upvotes', v_new)::text);
+  else
+    select upvotes into v_new from reports where report_id = p_report_id;
+  end if;
+
+  return jsonb_build_object('upvotes', v_new, 'counted', (v_rows > 0));
 end;
 $$;
 
-create or replace function moderate_report(p_report_id text, p_moderator_id text, p_action text, p_reason text) returns reports
+-- Drop the old unauthenticated 4-arg signature. `create or replace` with a new
+-- argument list would ADD an overload, leaving the vulnerable version callable.
+drop function if exists moderate_report(text, text, text, text);
+
+create or replace function moderate_report(p_report_id text, p_moderator_id text, p_action text, p_reason text, p_pin text) returns reports
 language plpgsql security definer as $$
 declare
   v_row reports;
 begin
+  perform _check_admin(p_pin);  -- server-side authorization; raises 'Unauthorized' on bad PIN
+
   if p_action = 'hide' then update reports set hidden = true where report_id = p_report_id;
   elsif p_action = 'unhide' then update reports set hidden = false where report_id = p_report_id;
   elsif p_action = 'resolve' then update reports set status = 'Resolved' where report_id = p_report_id;
@@ -223,8 +342,15 @@ declare
   v_use int := greatest(1, least(5, coalesce((p_ratings->>'usefulness')::int, 3)));
   v_avg_acc numeric; v_avg_auth numeric; v_avg_use numeric;
 begin
+  -- One rating row per (report, user): re-submitting revises the existing
+  -- rating rather than piling on and skewing the average.
   insert into ratings(rating_id, report_id, user_id, accuracy, authenticity, usefulness, "timestamp")
-  values (_generate_id('RTG'), p_report_id, coalesce(p_user_id, 'anonymous'), v_acc, v_auth, v_use, _now_iso());
+  values (_generate_id('RTG'), p_report_id, coalesce(p_user_id, 'anonymous'), v_acc, v_auth, v_use, _now_iso())
+  on conflict (report_id, user_id) do update
+    set accuracy = excluded.accuracy,
+        authenticity = excluded.authenticity,
+        usefulness = excluded.usefulness,
+        "timestamp" = excluded."timestamp";
 
   select avg(accuracy), avg(authenticity), avg(usefulness)
   into v_avg_acc, v_avg_auth, v_avg_use
@@ -251,7 +377,20 @@ declare
   v_now text := _now_iso();
   v_row facilities;
   v_payload text;
+  v_name text := coalesce(p_facility->>'name', '');
 begin
+  if not _is_valid_facility_type(p_facility->>'type') then
+    raise exception 'Invalid facility type';
+  end if;
+  if length(trim(v_name)) < 2 or length(v_name) > 200 then
+    raise exception 'Facility name must be 2-200 characters';
+  end if;
+  if (p_facility->>'lat')::double precision not between -90 and 90
+     or (p_facility->>'lng')::double precision not between -180 and 180 then
+    raise exception 'Coordinates out of range';
+  end if;
+  perform _assert_valid_images(p_facility->'images');
+
   insert into facilities(facility_id, name, type, lat, lng, capacity, contact, description, submitted_by, editor_id, image_count, "timestamp", last_updated)
   values (
     v_facility_id,
@@ -294,6 +433,21 @@ declare
 begin
   select * into v_existing from facilities where facility_id = p_facility_id;
   if not found then raise exception 'Facility not found.'; end if;
+
+  if p_changes ? 'type' and not _is_valid_facility_type(p_changes->>'type') then
+    raise exception 'Invalid facility type';
+  end if;
+  if p_changes ? 'name'
+     and (length(trim(p_changes->>'name')) < 2 or length(p_changes->>'name') > 200) then
+    raise exception 'Facility name must be 2-200 characters';
+  end if;
+  if p_changes ? 'lat' and (p_changes->>'lat')::double precision not between -90 and 90 then
+    raise exception 'Latitude out of range';
+  end if;
+  if p_changes ? 'lng' and (p_changes->>'lng')::double precision not between -180 and 180 then
+    raise exception 'Longitude out of range';
+  end if;
+  perform _assert_valid_images(p_changes->'images');
 
   if p_changes ? 'name' and (p_changes->>'name') is distinct from v_existing.name then
     v_new_text := _sanitize(p_changes->>'name');
@@ -362,20 +516,37 @@ $$;
 create or replace function upvote_facility(p_facility_id text, p_user_id text) returns jsonb
 language plpgsql security definer as $$
 declare
+  v_uid text := coalesce(p_user_id, 'anonymous');
+  v_rows int;
   v_new int;
 begin
-  update facilities set upvotes = upvotes + 1 where facility_id = p_facility_id returning upvotes into v_new;
+  perform 1 from facilities where facility_id = p_facility_id;
   if not found then raise exception 'Facility not found.'; end if;
-  perform _append_block(p_facility_id, 'UPVOTE_FACILITY', coalesce(p_user_id, 'anonymous'), jsonb_build_object('upvotes', v_new)::text);
-  return jsonb_build_object('upvotes', v_new);
+
+  insert into upvotes(record_id, user_id) values (p_facility_id, v_uid)
+  on conflict (record_id, user_id) do nothing;
+  get diagnostics v_rows = row_count;
+
+  if v_rows > 0 then
+    update facilities set upvotes = upvotes + 1 where facility_id = p_facility_id returning upvotes into v_new;
+    perform _append_block(p_facility_id, 'UPVOTE_FACILITY', v_uid, jsonb_build_object('upvotes', v_new)::text);
+  else
+    select upvotes into v_new from facilities where facility_id = p_facility_id;
+  end if;
+
+  return jsonb_build_object('upvotes', v_new, 'counted', (v_rows > 0));
 end;
 $$;
 
-create or replace function moderate_facility(p_facility_id text, p_moderator_id text, p_action text, p_reason text) returns facilities
+drop function if exists moderate_facility(text, text, text, text);
+
+create or replace function moderate_facility(p_facility_id text, p_moderator_id text, p_action text, p_reason text, p_pin text) returns facilities
 language plpgsql security definer as $$
 declare
   v_row facilities;
 begin
+  perform _check_admin(p_pin);  -- server-side authorization; raises 'Unauthorized' on bad PIN
+
   if p_action = 'hide' then update facilities set hidden = true where facility_id = p_facility_id;
   elsif p_action = 'unhide' then update facilities set hidden = false where facility_id = p_facility_id;
   elsif p_action = 'flag' then update facilities set flagged = true where facility_id = p_facility_id;
@@ -403,10 +574,18 @@ language plpgsql security definer as $$
 declare
   v_row users;
 begin
+  if coalesce(p_user->>'userId', '') = '' then
+    raise exception 'userId is required';
+  end if;
+  -- First registration wins: on conflict we do NOT overwrite the alias, so a
+  -- caller replaying someone else's userId cannot hijack their display name.
   insert into users(user_id, alias, created_at_iso, role, reports_submitted)
   values (p_user->>'userId', coalesce(p_user->>'alias', 'Anonymous'), _now_iso(), 'reporter', 0)
-  on conflict (user_id) do update set alias = coalesce(excluded.alias, users.alias)
+  on conflict (user_id) do nothing
   returning * into v_row;
+  if not found then
+    select * into v_row from users where user_id = p_user->>'userId';
+  end if;
   return v_row;
 end;
 $$;
@@ -421,7 +600,8 @@ declare
   v_stored text;
 begin
   select value into v_stored from settings where key = 'adminPin';
-  return jsonb_build_object('valid', (v_stored is not null and p_pin = v_stored));
+  -- adminPin is a bcrypt hash; crypt() re-hashes p_pin with the stored salt.
+  return jsonb_build_object('valid', (v_stored is not null and p_pin is not null and v_stored = crypt(p_pin, v_stored)));
 end;
 $$;
 
@@ -454,16 +634,22 @@ revoke execute on function _generate_id(text) from public;
 revoke execute on function _now_iso() from public;
 revoke execute on function _sanitize(text) from public;
 revoke execute on function _append_block(text, text, text, text) from public;
+revoke execute on function _check_admin(text) from public;
+revoke execute on function _valid_image_url(text) from public;
+revoke execute on function _assert_valid_images(jsonb) from public;
+revoke execute on function _is_valid_report_type(text) from public;
+revoke execute on function _is_valid_status(text) from public;
+revoke execute on function _is_valid_facility_type(text) from public;
 
 grant execute on function create_report(jsonb) to anon, authenticated;
 grant execute on function update_report(text, jsonb, text, text) to anon, authenticated;
 grant execute on function upvote_report(text, text) to anon, authenticated;
-grant execute on function moderate_report(text, text, text, text) to anon, authenticated;
+grant execute on function moderate_report(text, text, text, text, text) to anon, authenticated;
 grant execute on function submit_rating(text, text, jsonb) to anon, authenticated;
 grant execute on function create_facility(jsonb) to anon, authenticated;
 grant execute on function update_facility(text, jsonb, text, text) to anon, authenticated;
 grant execute on function upvote_facility(text, text) to anon, authenticated;
-grant execute on function moderate_facility(text, text, text, text) to anon, authenticated;
+grant execute on function moderate_facility(text, text, text, text, text) to anon, authenticated;
 grant execute on function register_user(jsonb) to anon, authenticated;
 grant execute on function verify_admin_pin(text) to anon, authenticated;
 grant execute on function get_dashboard_stats() to anon, authenticated;
