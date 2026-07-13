@@ -100,6 +100,18 @@ const Utils = {
     return div.innerHTML;
   },
 
+  /**
+   * Quote+escape a value for a CSV cell AND neutralize spreadsheet formula
+   * injection: a cell that a spreadsheet would treat as a formula (starts with
+   * = + - @, or a tab/CR) is prefixed with a single quote so Excel/Sheets shows
+   * it as literal text instead of executing it. See OWASP "CSV Injection".
+   */
+  csvCell(value = "") {
+    let s = String(value ?? "");
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return '"' + s.replace(/"/g, '""') + '"';
+  },
+
   /** Validate a facility submission before sending to the API */
   validateFacility(facility) {
     const errors = [];

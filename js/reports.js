@@ -138,7 +138,7 @@ const Reports = {
       "upvotes",
     ];
     const rows = reports.map((r) =>
-      headers.map((h) => `"${String(r[h] ?? "").replace(/"/g, '""')}"`).join(",")
+      headers.map((h) => Utils.csvCell(r[h])).join(",")
     );
     const csv = [headers.join(","), ...rows].join("\n");
     Reports.downloadFile(csv, "paunawa-reports.csv", "text/csv");
