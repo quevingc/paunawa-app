@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Paunawa — Crowdsourced Emergency Reporting</title>
+<meta name="description" content="Real-time, crowdsourced emergency reporting with a tamper-evident audit trail." />
+<meta name="theme-color" content="#0f172a" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon-192.png" />
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<!-- ===================== Header ===================== -->
+<header class="app-header">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">🚨</div>
+    <div>
+      <div class="brand-name" data-i18n="appTitle">Paunawa</div>
+      <div class="brand-tagline" data-i18n="tagline">Crowdsourced real-time emergency reporting</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <select id="languageSelect" aria-label="Language">
+      <option value="en">EN</option>
+      <option value="es">ES</option>
+      <option value="fr">FR</option>
+      <option value="ar">AR</option>
+      <option value="tl">TL</option>
+    </select>
+    <button id="themeToggle" aria-label="Toggle dark mode">🌙</button>
+    <button id="sosBtn" class="sos-button" aria-label="Send SOS report">
+      🆘 <span data-i18n="sosMode">SOS</span>
+      <span id="offlineBadge" class="badge-count">0</span>
+    </button>
+  </div>
+</header>
+
+<!-- ===================== Nav ===================== -->
+<nav class="app-nav" aria-label="Main navigation">
+  <button data-view="map" class="nav-active" data-i18n="map">Map</button>
+  <button data-view="dashboard" data-i18n="dashboard">Dashboard</button>
+  <button data-view="facilities">Facilities</button>
+  <button data-view="admin">Admin</button>
+</nav>
+
+<main id="main">
+
+  <!-- ===================== Map View ===================== -->
+  <section id="view-map" class="view view-active">
+    <div class="map-toolbar">
+      <input type="text" id="searchInput" data-i18n-placeholder="search" placeholder="Search reports…" />
+      <select id="filterType" aria-label="Filter by type">
+        <option value="" data-i18n="allTypes">All Types</option>
+        <option value="flood">🌊 Flash Flood</option>
+        <option value="earthquake">🌐 Earthquake</option>
+        <option value="conflict">⚠️ Armed Conflict</option>
+        <option value="fire">🔥 Fire</option>
+        <option value="landslide">⛰️ Landslide</option>
+        <option value="storm">🌀 Storm/Typhoon</option>
+        <option value="other">❗ Other</option>
+      </select>
+      <select id="filterStatus" aria-label="Filter by status">
+        <option value="" data-i18n="allStatuses">All Statuses</option>
+        <option value="Active">Active</option>
+        <option value="Monitoring">Monitoring</option>
+        <option value="Resolved">Resolved</option>
+      </select>
+      <label class="checkbox"><input type="checkbox" id="heatmapToggle" /> Heatmap</label>
+      <button id="openReportForm" class="btn-primary" style="width:auto" data-i18n="reportIncident">Report Incident</button>
+      <button id="exportCsvBtn" data-i18n="exportCsv">Export CSV</button>
+      <button id="exportJsonBtn" data-i18n="exportJson">Export JSON</button>
+    </div>
+    <div class="map-layout">
+      <div id="map" role="application" aria-label="Emergency incident map"></div>
+      <aside class="map-side-list" id="reportListPanel" aria-label="Report list"></aside>
+    </div>
+  </section>
+
+  <!-- ===================== Dashboard View ===================== -->
+  <section id="view-dashboard" class="view">
+    <div class="dashboard-grid">
+      <div class="stat-cards">
+        <div class="stat-card active"><div class="num" id="statActive">0</div><div class="label" data-i18n="activeIncidents">Active</div></div>
+        <div class="stat-card monitoring"><div class="num" id="statMonitoring">0</div><div class="label">Monitoring</div></div>
+        <div class="stat-card resolved"><div class="num" id="statResolved">0</div><div class="label">Resolved</div></div>
+        <div class="stat-card"><div class="num" id="statTotal">0</div><div class="label">Total Reports</div></div>
+      </div>
+
+      <div class="panel">
+        <h3>Incidents by Type</h3>
+        <canvas id="typeChart" height="220"></canvas>
+      </div>
+      <div class="panel">
+        <h3>14-Day Timeline</h3>
+        <canvas id="timelineChart" height="220"></canvas>
+      </div>
+
+      <div class="panel">
+        <h3 data-i18n="recentReports">Recent Reports</h3>
+        <div id="recentReportsList"></div>
+      </div>
+      <div class="panel">
+        <h3 data-i18n="mostVerified">Most Verified</h3>
+        <div id="mostVerifiedList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== Facilities View ===================== -->
+  <section id="view-facilities" class="view">
+    <div class="panel">
+      <div class="facilities-header">
+        <div>
+          <h3>Evacuation Centers, Hospitals &amp; Safe Points</h3>
+          <p class="muted">These locations also appear as markers on the Map view. Anyone can add a facility — evacuation centers, hospitals, or community safe points — with a location, photos, and optional details.</p>
+        </div>
+        <button id="openFacilityForm" class="btn-primary" style="width:auto">➕ Add Facility</button>
+      </div>
+      <div id="facilitiesList"></div>
+    </div>
+  </section>
+
+  <!-- ===================== Admin View ===================== -->
+  <section id="view-admin" class="view">
+    <div class="panel" id="adminPanel"></div>
+  </section>
+
+</main>
+
+<!-- ===================== Report Form Modal ===================== -->
+<div class="modal" id="reportFormModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="reportFormTitle" data-i18n="reportIncident">Report Incident</h2>
+      <button class="modal-close" id="closeReportForm" data-close-modal aria-label="Close">✕</button>
+    </div>
+    <form id="reportForm">
+      <div class="form-group">
+        <label for="type" data-i18n="emergencyType">Emergency Type</label>
+        <select id="type" name="type" required>
+          <option value="flood">🌊 Flash Flood</option>
+          <option value="earthquake">🌐 Earthquake</option>
+          <option value="conflict">⚠️ Armed Conflict</option>
+          <option value="fire">🔥 Fire</option>
+          <option value="landslide">⛰️ Landslide</option>
+          <option value="storm">🌀 Storm/Typhoon</option>
+          <option value="other">❗ Other Hazard</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="description" data-i18n="description">Description</label>
+        <textarea id="description" name="description" required minlength="10" maxlength="1000" placeholder="What's happening? Include useful details for responders."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Location</label>
+        <div class="location-row">
+          <button type="button" id="useGpsBtn" data-i18n="useMyLocation">Use My Location</button>
+          <button type="button" id="pinOnMapBtn">Pin on Map</button>
+          <span id="selectedLocationLabel">No location selected</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="imageInput" data-i18n="photos">Photos</label>
+        <input type="file" id="imageInput" accept="image/*" multiple />
+        <div class="img-previews" id="imagePreviews"></div>
+      </div>
+      <div class="form-group">
+        <label for="reporterAlias" data-i18n="reporterAlias">Your Alias (optional)</label>
+        <input type="text" id="reporterAlias" name="reporterAlias" placeholder="Anonymous" maxlength="40" />
+      </div>
+      <button type="submit" class="btn-primary" data-i18n="submit">Submit Report</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== Report Detail Modal ===================== -->
+<div class="modal" id="reportDetailModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Report Details</h2>
+      <button class="modal-close" data-close-modal aria-label="Close">✕</button>
+    </div>
+    <div id="reportDetailBody"></div>
+  </div>
+</div>
+
+<!-- ===================== Facility Form Modal ===================== -->
+<div class="modal" id="facilityFormModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="facilityFormTitle">Add Facility</h2>
+      <button class="modal-close" id="closeFacilityForm" data-close-modal aria-label="Close">✕</button>
+    </div>
+    <form id="facilityForm">
+      <div class="form-group">
+        <label for="facilityName">Facility Name</label>
+        <input type="text" id="facilityName" name="name" required minlength="3" maxlength="100" placeholder="e.g. Barangay Hall Evacuation Center" />
+      </div>
+      <div class="form-group">
+        <label for="facilityType">Facility Type</label>
+        <select id="facilityType" name="type" required>
+          <option value="evacuation">🏠 Evacuation Center</option>
+          <option value="hospital">🏥 Hospital</option>
+          <option value="other">📍 Community Safe Point</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="facilityCapacity">Capacity (optional)</label>
+        <input type="text" id="facilityCapacity" name="capacity" maxlength="20" placeholder="e.g. 300 people" />
+      </div>
+      <div class="form-group">
+        <label for="facilityContact">Contact (optional)</label>
+        <input type="text" id="facilityContact" name="contact" maxlength="60" placeholder="Phone number or contact name" />
+      </div>
+      <div class="form-group">
+        <label for="facilityDescription">Description (optional)</label>
+        <textarea id="facilityDescription" name="description" maxlength="500" placeholder="Anything responders or evacuees should know"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Location</label>
+        <div class="location-row">
+          <button type="button" id="facilityUseGpsBtn">Use My Location</button>
+          <button type="button" id="facilityPinOnMapBtn">Pin on Map</button>
+          <span id="selectedFacilityLocationLabel">No location selected</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="facilityImageInput">Photos</label>
+        <input type="file" id="facilityImageInput" accept="image/*" multiple />
+        <div class="img-previews" id="facilityImagePreviews"></div>
+      </div>
+      <div class="form-group">
+        <label for="facilitySubmittedBy">Your Alias (optional)</label>
+        <input type="text" id="facilitySubmittedBy" name="submittedBy" placeholder="Anonymous" maxlength="40" />
+      </div>
+      <button type="submit" class="btn-primary">Submit</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== Facility Detail Modal ===================== -->
+<div class="modal" id="facilityDetailModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Facility Details</h2>
+      <button class="modal-close" data-close-modal aria-label="Close">✕</button>
+    </div>
+    <div id="facilityDetailBody"></div>
+  </div>
+</div>
+
+<!-- ===================== Emergency Contacts Modal ===================== -->
+<div class="modal" id="contactsModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Emergency Contacts</h2>
+      <button class="modal-close" data-close-modal aria-label="Close">✕</button>
+    </div>
+    <ul id="contactsList"></ul>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- ===================== Scripts ===================== -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<script src="js/config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/blockchain.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/api.js"></script>
+<script src="js/offline.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/notifications.js"></script>
+<script src="js/map.js"></script>
+<script src="js/reports.js"></script>
+<script src="js/facilities.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/sos.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
