@@ -34,9 +34,9 @@ Total time: ~15 minutes.
 3. Open `supabase/schema.sql` from this project, copy its **entire contents**, paste into the editor.
 4. Click **Run** (or Ctrl/Cmd+Enter). You should see "Success. No rows returned."
 5. Click **New query** again, copy the **entire contents** of `supabase/functions.sql`, paste, and **Run**.
-6. Confirm it worked: left sidebar → **Table Editor** — you should see 8 tables
+6. Confirm it worked: left sidebar → **Table Editor** — you should see 9 tables
    (`reports`, `facilities`, `updates`, `ratings`, `users`, `blockchain`,
-   `images`, `settings`), and `facilities` should already have 2 sample rows.
+   `images`, `upvotes`, `settings`), and `facilities` should already have 2 sample rows.
 
 ## 4. Create the image storage bucket
 
@@ -47,11 +47,29 @@ Total time: ~15 minutes.
 5. Go back to **SQL Editor → New query**, paste the contents of
    `supabase/storage_policies.sql`, and **Run**.
 
-## 5. Change the default admin PIN
+## 5. Set the admin PIN
 
-1. Left sidebar → **Table Editor** → `settings` table.
-2. Find the row where `key = adminPin`, click the `value` cell, change it
-   from `changeme123` to something private, press Enter to save.
+The `adminPin` is stored as a **bcrypt hash**, never plaintext, and `schema.sql`
+seeds an unguessable random hash — so there is **no usable default PIN** and
+moderation stays locked until you set your own. Do **not** edit the `value` cell
+in the Table Editor directly (a plaintext value there would never verify).
+Instead, SQL Editor → New query → run (with your real PIN):
+
+```sql
+update settings set value = crypt('YOUR_REAL_PIN', gen_salt('bf')) where key = 'adminPin';
+```
+
+The app's admin panel sends this PIN to `verify_admin_pin()` and to every
+`moderate_*` RPC, which re-check the hash server-side. A visitor cannot moderate
+by calling the RPC directly without the PIN.
+
+> **Optional — strict image-URL lock.** By default the backend accepts image
+> URLs matching a generic `…supabase.co/storage/v1/object/public/report-images/`
+> pattern. To pin uploads to *your* project only, set:
+> ```sql
+> update settings set value = 'https://<your-ref>.supabase.co/storage/v1/object/public/report-images/'
+> where key = 'storageUrlPrefix';
+> ```
 
 ## 6. Get your API credentials
 

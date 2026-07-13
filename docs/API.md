@@ -64,8 +64,10 @@ Logs a field-level entry per changed field in `Updates`, plus one
 ### `moderateReport` (admin)
 ```json
 { "action": "moderateReport", "reportId": "RPT-...", "moderatorId": "admin",
-  "action": "hide|unhide|resolve|flag|unflag", "reason": "..." }
+  "action": "hide|unhide|resolve|flag|unflag", "reason": "...", "pin": "admin-pin" }
 ```
+The `pin` is required and re-verified server-side (bcrypt) by `moderate_report()`;
+calls with a missing/wrong PIN are rejected with `Unauthorized`.
 
 ## Ratings
 
@@ -138,8 +140,9 @@ Logs a field-level entry per changed field in `Updates`, plus one
 ### `moderateFacility` (admin)
 ```json
 { "action": "moderateFacility", "facilityId": "FAC-...", "moderatorId": "admin",
-  "action": "hide|unhide|flag|unflag", "reason": "..." }
+  "action": "hide|unhide|flag|unflag", "reason": "...", "pin": "admin-pin" }
 ```
+`pin` is required and re-verified server-side by `moderate_facility()`.
 
 Audit history for a facility uses the same endpoint as reports —
 `getAuditHistory` with the `facilityId` passed as `reportId`:
@@ -153,4 +156,6 @@ Audit history for a facility uses the same endpoint as reports —
 ```json
 { "action": "verifyAdminPin", "pin": "1234" }
 ```
-Returns `{ valid: true|false }`. Compares against `Settings.adminPin`.
+Returns `{ valid: true|false }`. Compares the PIN against the **bcrypt hash** in
+`settings.adminPin` (via pgcrypto `crypt()`), so the stored value is never the
+plaintext PIN. This gate is UI-only; the `moderate_*` RPCs enforce the PIN too.

@@ -6,7 +6,7 @@
  * to avoid showing stale emergency data.
  */
 
-const CACHE_NAME = "paunawa-shell-v1";
+const CACHE_NAME = "paunawa-shell-v2";
 const APP_SHELL = [
   "./",
   "./index.html",

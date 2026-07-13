@@ -1,9 +1,11 @@
 /**
  * admin.js
- * Lightweight admin/moderation panel. Access is gated by a simple PIN
- * stored server-side in the Settings sheet (see gas/Utils.gs -> checkAdminPin).
- * For real deployments, replace this with proper authentication
- * (Google Sign-In restricted to a domain, or Apps Script OAuth).
+ * Lightweight admin/moderation panel. Access is gated by a PIN stored as a
+ * bcrypt hash in the Supabase `settings` table and verified server-side by the
+ * verify_admin_pin() RPC. The PIN is also passed to every moderate_* RPC, which
+ * re-check it via _check_admin() — so moderation is enforced on the server, not
+ * just hidden in the UI. For real deployments, replace the PIN with proper auth
+ * (e.g. Supabase Auth restricted to specific accounts).
  */
 
 const Admin = {
@@ -23,9 +25,10 @@ const Admin = {
   },
 
   async moderate(reportId, action, reason = "") {
-    if (!Admin.authenticated) throw new Error("Not authenticated.");
-    // action: "hide" | "unhide" | "resolve" | "delete-flagged"
-    return Api.moderateReport(reportId, "admin", action, reason);
+    if (!Admin.authenticated || !Admin.pin) throw new Error("Not authenticated.");
+    // action: "hide" | "unhide" | "resolve" | "flag" | "unflag"
+    // Admin.pin is re-verified server-side by moderate_report().
+    return Api.moderateReport(reportId, "admin", action, reason, Admin.pin);
   },
 
   renderPanel(reports, container) {
