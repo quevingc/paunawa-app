@@ -7,7 +7,7 @@
 
 const CONFIG = {
   // ⚠️ REPLACE THESE with your Supabase project's URL and anon (public) key
-  SUPABASE_URL: "https://wayjulzryjhxmtuceyrm.supabase.co/rest/v1/",
+  SUPABASE_URL: "https://wayjulzryjhxmtuceyrm.supabase.co",
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndheWp1bHpyeWpoeG10dWNleXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4ODI2MzUsImV4cCI6MjA5OTQ1ODYzNX0.XGlxnzkLyszlJ9UFlEG-6M1ks-pNTbcIOealEHMvIpY",
   STORAGE_BUCKET: "report-images",
 
