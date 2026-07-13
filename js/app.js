@@ -112,7 +112,7 @@ const App = {
           <span class="dot" style="background:${info.color}"></span>
           <div class="report-list-item-body">
             <strong>${info.icon} ${Utils.escapeHTML(f.name)}</strong>
-            <span class="muted">${info.label}${f.capacity ? ` · Capacity ${Utils.escapeHTML(f.capacity)}` : ""}</span>
+            <span class="muted">${info.label}${f.capacity ? ` · Capacity ${f.capacity}` : ""}</span>
           </div>
           <div class="report-list-item-meta">
             <span class="badge-outline">✔ ${f.upvotes || 0}</span>
@@ -151,6 +151,84 @@ const App = {
     document.getElementById("imageInput")?.addEventListener("change", App.handleImageSelect);
 
     form.addEventListener("submit", App.handleFormSubmit);
+
+    App.bindReportSearch();
+  },
+
+  // ---------------- Report Place Search (OpenStreetMap) ----------------
+  bindReportSearch() {
+    const input = document.getElementById("reportSearchInput");
+    const searchBtn = document.getElementById("reportSearchBtn");
+    if (!input || !searchBtn) return;
+
+    const runSearch = () => App.runReportTextSearch();
+    searchBtn.addEventListener("click", runSearch);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        runSearch();
+      }
+    });
+
+    document.getElementById("reportSearchResults")?.addEventListener("click", (e) => {
+      const item = e.target.closest("[data-result-index]");
+      if (!item) return;
+      const result = App._lastReportSearchResults?.[parseInt(item.dataset.resultIndex, 10)];
+      if (result) App.applyReportSearchResult(result);
+    });
+  },
+
+  async runReportTextSearch() {
+    const input = document.getElementById("reportSearchInput");
+    const btn = document.getElementById("reportSearchBtn");
+    const query = input.value.trim();
+    if (query.length < 2) {
+      App.toast("Type at least 2 characters to search.");
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Searching…";
+    App.renderReportSearchResults(null, "Searching OpenStreetMap…");
+    try {
+      const center = await App.getPlaceSearchCenter(App.selectedLatLng);
+      const results = await PlacesSearch.searchText(query, center);
+      App.renderReportSearchResults(results);
+    } catch (e) {
+      App.renderReportSearchResults(null, e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "🔍 Search";
+    }
+  },
+
+  renderReportSearchResults(results, message) {
+    App._lastReportSearchResults = results || [];
+    const container = document.getElementById("reportSearchResults");
+    if (!container) return;
+    if (message) {
+      container.innerHTML = `<p class="empty-state">${Utils.escapeHTML(message)}</p>`;
+      return;
+    }
+    if (!results || results.length === 0) {
+      container.innerHTML = `<p class="empty-state">No results found.</p>`;
+      return;
+    }
+    container.innerHTML = results
+      .map(
+        (r, i) => `
+        <button type="button" class="place-search-result-item" data-result-index="${i}">
+          <span class="result-name">${Utils.escapeHTML(r.name || "Unnamed place")}</span>
+          ${r.displayAddress ? `<span class="result-address">${Utils.escapeHTML(r.displayAddress)}</span>` : ""}
+        </button>`
+      )
+      .join("");
+  },
+
+  applyReportSearchResult(result) {
+    App.setSelectedLocation(result.lat, result.lng);
+    App.renderReportSearchResults([]);
+    document.getElementById("reportSearchInput").value = "";
+    App.toast("Location pinned from OpenStreetMap — please double-check before submitting.");
   },
 
   openReportForm() {
@@ -159,6 +237,9 @@ const App = {
     document.getElementById("reportForm").reset();
     Reports.currentImages = [];
     App.renderImagePreviews();
+    const searchInput = document.getElementById("reportSearchInput");
+    if (searchInput) searchInput.value = "";
+    App.renderReportSearchResults([]);
     document.getElementById("reportFormModal")?.classList.add("modal-open");
   },
 
@@ -298,6 +379,125 @@ const App = {
     document.getElementById("facilityImageInput")?.addEventListener("change", App.handleFacilityImageSelect);
 
     form.addEventListener("submit", App.handleFacilityFormSubmit);
+
+    App.bindFacilitySearch();
+  },
+
+  // ---------------- Facility Place Search (OpenStreetMap) ----------------
+  bindFacilitySearch() {
+    const input = document.getElementById("facilitySearchInput");
+    const searchBtn = document.getElementById("facilitySearchBtn");
+    if (!input || !searchBtn) return;
+
+    const runTextSearch = () => App.runFacilityTextSearch();
+    searchBtn.addEventListener("click", runTextSearch);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        runTextSearch();
+      }
+    });
+
+    document.querySelectorAll(".place-search-chips .chip").forEach((chip) => {
+      chip.addEventListener("click", () => App.runFacilityCategorySearch(chip.dataset.category, chip));
+    });
+
+    document.getElementById("facilitySearchResults")?.addEventListener("click", (e) => {
+      const item = e.target.closest("[data-result-index]");
+      if (!item) return;
+      const result = App._lastFacilitySearchResults?.[parseInt(item.dataset.resultIndex, 10)];
+      if (result) App.applyFacilitySearchResult(result);
+    });
+  },
+
+  /** Best-effort location to bias/center place search around.
+   * Pass an already-selected point (if any) as the first choice. */
+  async getPlaceSearchCenter(preferredLatLng) {
+    if (preferredLatLng) return preferredLatLng;
+    if (Notifications.userPosition) return Notifications.userPosition;
+    try {
+      const pos = await Utils.getCurrentPosition();
+      return pos;
+    } catch {
+      if (MapModule.map) {
+        const c = MapModule.map.getCenter();
+        return { lat: c.lat, lng: c.lng };
+      }
+      return null;
+    }
+  },
+
+  async runFacilityTextSearch() {
+    const input = document.getElementById("facilitySearchInput");
+    const btn = document.getElementById("facilitySearchBtn");
+    const query = input.value.trim();
+    if (query.length < 2) {
+      App.toast("Type at least 2 characters to search.");
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Searching…";
+    App.renderFacilitySearchResults(null, "Searching OpenStreetMap…");
+    try {
+      const center = await App.getPlaceSearchCenter(App.selectedFacilityLatLng);
+      const results = await PlacesSearch.searchText(query, center);
+      App.renderFacilitySearchResults(results);
+    } catch (e) {
+      App.renderFacilitySearchResults(null, e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "🔍 Search";
+    }
+  },
+
+  async runFacilityCategorySearch(category, chipEl) {
+    document.querySelectorAll(".place-search-chips .chip").forEach((c) => (c.disabled = true));
+    App.renderFacilitySearchResults(null, "Searching nearby…");
+    try {
+      const center = await App.getPlaceSearchCenter(App.selectedFacilityLatLng);
+      if (!center) throw new Error("Could not determine a location to search near.");
+      const results = await PlacesSearch.searchCategory(category, center, 5);
+      App.renderFacilitySearchResults(results, results.length === 0 ? "No results found within 5km." : null);
+    } catch (e) {
+      App.renderFacilitySearchResults(null, e.message);
+    } finally {
+      document.querySelectorAll(".place-search-chips .chip").forEach((c) => (c.disabled = false));
+    }
+  },
+
+  renderFacilitySearchResults(results, message) {
+    App._lastFacilitySearchResults = results || [];
+    const container = document.getElementById("facilitySearchResults");
+    if (!container) return;
+    if (message) {
+      container.innerHTML = `<p class="empty-state">${Utils.escapeHTML(message)}</p>`;
+      return;
+    }
+    if (!results || results.length === 0) {
+      container.innerHTML = `<p class="empty-state">No results found.</p>`;
+      return;
+    }
+    container.innerHTML = results
+      .map(
+        (r, i) => `
+        <button type="button" class="place-search-result-item" data-result-index="${i}">
+          <span class="result-name">${Utils.escapeHTML(r.name || "Unnamed place")}</span>
+          ${r.displayAddress ? `<span class="result-address">${Utils.escapeHTML(r.displayAddress)}</span>` : ""}
+        </button>`
+      )
+      .join("");
+  },
+
+  applyFacilitySearchResult(result) {
+    const form = document.getElementById("facilityForm");
+    if (!form) return;
+    if (result.name) form.name.value = result.name;
+    if (result.suggestedType) form.type.value = result.suggestedType;
+    if (result.contact && !form.contact.value) form.contact.value = result.contact;
+    App.setSelectedFacilityLocation(result.lat, result.lng);
+    App.renderFacilitySearchResults([]);
+    document.getElementById("facilitySearchInput").value = "";
+    App.toast("Filled from OpenStreetMap — please double-check before submitting.");
   },
 
   openFacilityForm() {
@@ -306,6 +506,9 @@ const App = {
     document.getElementById("facilityForm").reset();
     Facilities.currentImages = [];
     App.renderFacilityImagePreviews();
+    const searchInput = document.getElementById("facilitySearchInput");
+    if (searchInput) searchInput.value = "";
+    App.renderFacilitySearchResults([]);
     document.getElementById("facilityFormModal")?.classList.add("modal-open");
   },
 
@@ -438,7 +641,7 @@ const App = {
       </div>
       <ul class="detail-meta">
         <li><strong>Name:</strong> ${Utils.escapeHTML(facility.name)}</li>
-        <li><strong>Capacity:</strong> ${facility.capacity ? Utils.escapeHTML(facility.capacity) : "—"}</li>
+        <li><strong>Capacity:</strong> ${facility.capacity || "—"}</li>
         <li><strong>Contact:</strong> ${Utils.escapeHTML(facility.contact || "—")}</li>
         <li><strong>Added:</strong> ${Utils.formatDate(facility.timestamp)}</li>
         <li><strong>Last updated:</strong> ${Utils.formatDate(facility.lastUpdated)}</li>

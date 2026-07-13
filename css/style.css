@@ -335,6 +335,54 @@ input, select, textarea { font-family: inherit; }
 }
 #selectedLocationLabel { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted); }
 
+/* ---------- Place search (Add Facility) ---------- */
+.place-search-box { margin-bottom: 4px; }
+.place-search-box > label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 6px; }
+.place-search-row { display: flex; gap: 8px; }
+.place-search-row input {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.place-search-row button {
+  background: var(--teal); color: #fff; border: none;
+  padding: 0 14px; border-radius: var(--radius-sm); font-size: 0.85rem; white-space: nowrap;
+}
+.place-search-row button:disabled { opacity: 0.6; }
+.place-search-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.place-search-chips .chip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+}
+.place-search-chips .chip:hover { border-color: var(--teal); }
+.place-search-chips .chip:disabled { opacity: 0.6; }
+.place-search-results { margin-top: 8px; max-height: 220px; overflow-y: auto; }
+.place-search-result-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+.place-search-result-item:hover { border-color: var(--teal); }
+.place-search-result-item .result-name { font-weight: 600; display: block; }
+.place-search-result-item .result-address { color: var(--text-muted); font-size: 0.75rem; }
+.place-search-attribution { font-size: 0.7rem; margin: 6px 0 0; }
+.modal-divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
 .img-previews { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .img-preview { position: relative; width: 70px; height: 70px; }
 .img-preview img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm); }

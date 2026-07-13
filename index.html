@@ -143,6 +143,16 @@
       <h2 id="reportFormTitle" data-i18n="reportIncident">Report Incident</h2>
       <button class="modal-close" id="closeReportForm" data-close-modal aria-label="Close">✕</button>
     </div>
+    <div class="place-search-box">
+      <label for="reportSearchInput">Search a nearby place to pin location (optional)</label>
+      <div class="place-search-row">
+        <input type="text" id="reportSearchInput" placeholder="e.g. SM Mall of Asia, Barangay Hall..." />
+        <button type="button" id="reportSearchBtn">🔍 Search</button>
+      </div>
+      <div id="reportSearchResults" class="place-search-results"></div>
+      <p class="muted place-search-attribution">Powered by OpenStreetMap contributors — always double-check the pinned location.</p>
+    </div>
+    <hr class="modal-divider" />
     <form id="reportForm">
       <div class="form-group">
         <label for="type" data-i18n="emergencyType">Emergency Type</label>
@@ -200,6 +210,22 @@
       <h2 id="facilityFormTitle">Add Facility</h2>
       <button class="modal-close" id="closeFacilityForm" data-close-modal aria-label="Close">✕</button>
     </div>
+    <div class="place-search-box">
+      <label for="facilitySearchInput">Search OpenStreetMap (optional — fills the form for you)</label>
+      <div class="place-search-row">
+        <input type="text" id="facilitySearchInput" placeholder="e.g. Philippine General Hospital" />
+        <button type="button" id="facilitySearchBtn">🔍 Search</button>
+      </div>
+      <div class="place-search-chips">
+        <button type="button" class="chip" data-category="hospital">🏥 Nearby Hospitals</button>
+        <button type="button" class="chip" data-category="school">🏫 Nearby Schools</button>
+        <button type="button" class="chip" data-category="mall">🏬 Nearby Malls</button>
+        <button type="button" class="chip" data-category="evacuation">🏠 Nearby Community Centers</button>
+      </div>
+      <div id="facilitySearchResults" class="place-search-results"></div>
+      <p class="muted place-search-attribution">Powered by OpenStreetMap contributors — please verify details before submitting.</p>
+    </div>
+    <hr class="modal-divider" />
     <form id="facilityForm">
       <div class="form-group">
         <label for="facilityName">Facility Name</label>
@@ -289,6 +315,7 @@
 <script src="js/i18n.js"></script>
 <script src="js/notifications.js"></script>
 <script src="js/map.js"></script>
+<script src="js/placesSearch.js"></script>
 <script src="js/reports.js"></script>
 <script src="js/facilities.js"></script>
 <script src="js/dashboard.js"></script>
