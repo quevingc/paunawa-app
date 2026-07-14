@@ -164,14 +164,13 @@ const Api = {
     throw new Error("uploadImageMeta is not supported directly — attach images via createReport/updateReport.");
   },
 
-  async moderateReport(reportId, moderatorId, action, reason, pin) {
+  async moderateReport(reportId, moderatorId, action, reason) {
     const sb = requireClient_();
     const { data, error } = await sb.rpc("moderate_report", {
       p_report_id: reportId,
       p_moderator_id: moderatorId,
       p_action: action,
       p_reason: reason,
-      p_pin: pin,
     });
     if (error) throw new Error(error.message);
     const [withImages] = await attachImages_([data], "report_id");
@@ -267,14 +266,13 @@ const Api = {
     return data;
   },
 
-  async moderateFacility(facilityId, moderatorId, action, reason, pin) {
+  async moderateFacility(facilityId, moderatorId, action, reason) {
     const sb = requireClient_();
     const { data, error } = await sb.rpc("moderate_facility", {
       p_facility_id: facilityId,
       p_moderator_id: moderatorId,
       p_action: action,
       p_reason: reason,
-      p_pin: pin,
     });
     if (error) throw new Error(error.message);
     const [withImages] = await attachImages_([data], "facility_id");
@@ -290,13 +288,18 @@ const Api = {
   },
 
   // ---- Real-time (replaces 30-second polling) ----
-  /** Subscribe to live inserts/updates on reports & facilities. Returns the channel (call .unsubscribe() to stop). */
-  subscribeToChanges(onChange) {
+  /** Subscribe to live inserts/updates on reports & facilities. Returns the channel (call .unsubscribe() to stop).
+   * onStatus, if given, is called with Supabase's channel status string
+   * ("SUBSCRIBED" | "CHANNEL_ERROR" | "TIMED_OUT" | "CLOSED") so the UI
+   * can reflect the real connection state instead of assuming it worked. */
+  subscribeToChanges(onChange, onStatus) {
     const sb = requireClient_();
     return sb
       .channel("public-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "reports" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "facilities" }, onChange)
-      .subscribe();
+      .subscribe((status) => {
+        if (onStatus) onStatus(status);
+      });
   },
 };

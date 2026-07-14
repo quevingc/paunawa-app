@@ -29,6 +29,9 @@
     </div>
   </div>
   <div class="header-actions">
+    <span id="connectionStatus" class="connection-status connection-connecting" title="Connecting…">
+      <span class="connection-dot"></span> <span class="connection-label">Connecting…</span>
+    </span>
     <select id="languageSelect" aria-label="Language">
       <option value="en">EN</option>
       <option value="es">ES</option>
@@ -44,12 +47,17 @@
   </div>
 </header>
 
+<!-- ===================== Offline banner ===================== -->
+<div id="offlineBanner" class="offline-banner" hidden>
+  ⚠️ You're offline — reports you submit now will be saved and synced automatically once you're back online.
+</div>
+
 <!-- ===================== Nav ===================== -->
 <nav class="app-nav" aria-label="Main navigation">
-  <button data-view="map" class="nav-active" data-i18n="map">Map</button>
-  <button data-view="dashboard" data-i18n="dashboard">Dashboard</button>
-  <button data-view="facilities">Facilities</button>
-  <button data-view="admin">Admin</button>
+  <button data-view="map" class="nav-active" data-i18n="map">🗺️ Map</button>
+  <button data-view="dashboard" data-i18n="dashboard">📊 Dashboard</button>
+  <button data-view="facilities">🏥 Facilities</button>
+  <button data-view="admin">🛡️ Admin</button>
 </nav>
 
 <main id="main">
@@ -57,59 +65,105 @@
   <!-- ===================== Map View ===================== -->
   <section id="view-map" class="view view-active">
     <div class="map-toolbar">
-      <input type="text" id="searchInput" data-i18n-placeholder="search" placeholder="Search reports…" />
-      <select id="filterType" aria-label="Filter by type">
-        <option value="" data-i18n="allTypes">All Types</option>
-        <option value="flood">🌊 Flash Flood</option>
-        <option value="earthquake">🌐 Earthquake</option>
-        <option value="conflict">⚠️ Armed Conflict</option>
-        <option value="fire">🔥 Fire</option>
-        <option value="landslide">⛰️ Landslide</option>
-        <option value="storm">🌀 Storm/Typhoon</option>
-        <option value="other">❗ Other</option>
-      </select>
-      <select id="filterStatus" aria-label="Filter by status">
-        <option value="" data-i18n="allStatuses">All Statuses</option>
-        <option value="Active">Active</option>
-        <option value="Monitoring">Monitoring</option>
-        <option value="Resolved">Resolved</option>
-      </select>
-      <label class="checkbox"><input type="checkbox" id="heatmapToggle" /> Heatmap</label>
-      <button id="openReportForm" class="btn-primary" style="width:auto" data-i18n="reportIncident">Report Incident</button>
-      <button id="exportCsvBtn" data-i18n="exportCsv">Export CSV</button>
-      <button id="exportJsonBtn" data-i18n="exportJson">Export JSON</button>
+      <div class="toolbar-search">
+        <input type="text" id="searchInput" data-i18n-placeholder="search" placeholder="Search reports…" />
+      </div>
+      <div class="toolbar-filters">
+        <select id="filterType" aria-label="Filter by type">
+          <option value="" data-i18n="allTypes">All Types</option>
+          <option value="flood">🌊 Flash Flood</option>
+          <option value="earthquake">🌐 Earthquake</option>
+          <option value="conflict">⚠️ Armed Conflict</option>
+          <option value="fire">🔥 Fire</option>
+          <option value="landslide">⛰️ Landslide</option>
+          <option value="storm">🌀 Storm/Typhoon</option>
+          <option value="other">❗ Other</option>
+        </select>
+        <select id="filterStatus" aria-label="Filter by status">
+          <option value="" data-i18n="allStatuses">All Statuses</option>
+          <option value="Active">Active</option>
+          <option value="Monitoring">Monitoring</option>
+          <option value="Resolved">Resolved</option>
+        </select>
+        <label class="checkbox"><input type="checkbox" id="heatmapToggle" /> Heatmap</label>
+      </div>
+      <div class="toolbar-actions">
+        <button id="openReportForm" class="btn-primary" data-i18n="reportIncident">Report Incident</button>
+        <button id="exportCsvBtn" class="btn-secondary" data-i18n="exportCsv">Export CSV</button>
+        <button id="exportJsonBtn" class="btn-secondary" data-i18n="exportJson">Export JSON</button>
+      </div>
     </div>
     <div class="map-layout">
       <div id="map" role="application" aria-label="Emergency incident map"></div>
-      <aside class="map-side-list" id="reportListPanel" aria-label="Report list"></aside>
+      <aside class="map-side-list" aria-label="Report list">
+        <div class="panel-header">
+          <h3>📍 Live Reports</h3>
+          <span class="panel-count" id="reportListCount">0</span>
+        </div>
+        <div id="reportListPanel"></div>
+      </aside>
     </div>
   </section>
 
   <!-- ===================== Dashboard View ===================== -->
   <section id="view-dashboard" class="view">
+    <div class="dashboard-meta">
+      <span class="muted">Live overview</span>
+      <span class="dashboard-updated" id="dashboardUpdated"></span>
+    </div>
     <div class="dashboard-grid">
       <div class="stat-cards">
-        <div class="stat-card active"><div class="num" id="statActive">0</div><div class="label" data-i18n="activeIncidents">Active</div></div>
-        <div class="stat-card monitoring"><div class="num" id="statMonitoring">0</div><div class="label">Monitoring</div></div>
-        <div class="stat-card resolved"><div class="num" id="statResolved">0</div><div class="label">Resolved</div></div>
-        <div class="stat-card"><div class="num" id="statTotal">0</div><div class="label">Total Reports</div></div>
+        <div class="stat-card active">
+          <div class="stat-icon">🔴</div>
+          <div class="num" id="statActive">0</div>
+          <div class="label" data-i18n="activeIncidents">Active</div>
+        </div>
+        <div class="stat-card monitoring">
+          <div class="stat-icon">🟡</div>
+          <div class="num" id="statMonitoring">0</div>
+          <div class="label">Monitoring</div>
+        </div>
+        <div class="stat-card resolved">
+          <div class="stat-icon">🟢</div>
+          <div class="num" id="statResolved">0</div>
+          <div class="label">Resolved</div>
+        </div>
+        <div class="stat-card total">
+          <div class="stat-icon">📋</div>
+          <div class="num" id="statTotal">0</div>
+          <div class="label">Total Reports</div>
+        </div>
       </div>
 
       <div class="panel">
-        <h3>Incidents by Type</h3>
-        <canvas id="typeChart" height="220"></canvas>
+        <h3>🥧 Incidents by Type</h3>
+        <div class="chart-wrap">
+          <canvas id="typeChart" height="220"></canvas>
+          <div class="chart-empty-overlay" id="typeChartEmpty" hidden>
+            <span class="empty-state-icon">🥧</span>
+            <span class="empty-state-title">Not enough data yet</span>
+            <span class="muted">The chart fills in as reports come in.</span>
+          </div>
+        </div>
       </div>
       <div class="panel">
-        <h3>14-Day Timeline</h3>
-        <canvas id="timelineChart" height="220"></canvas>
+        <h3>📈 14-Day Timeline</h3>
+        <div class="chart-wrap">
+          <canvas id="timelineChart" height="220"></canvas>
+          <div class="chart-empty-overlay" id="timelineChartEmpty" hidden>
+            <span class="empty-state-icon">📈</span>
+            <span class="empty-state-title">Not enough data yet</span>
+            <span class="muted">The timeline fills in as reports come in.</span>
+          </div>
+        </div>
       </div>
 
       <div class="panel">
-        <h3 data-i18n="recentReports">Recent Reports</h3>
+        <h3>🕒 <span data-i18n="recentReports">Recent Reports</span></h3>
         <div id="recentReportsList"></div>
       </div>
       <div class="panel">
-        <h3 data-i18n="mostVerified">Most Verified</h3>
+        <h3>✔️ <span data-i18n="mostVerified">Most Verified</span></h3>
         <div id="mostVerifiedList"></div>
       </div>
     </div>
@@ -120,10 +174,10 @@
     <div class="panel">
       <div class="facilities-header">
         <div>
-          <h3>Evacuation Centers, Hospitals &amp; Safe Points</h3>
+          <h3>🏥 Evacuation Centers, Hospitals &amp; Safe Points</h3>
           <p class="muted">These locations also appear as markers on the Map view. Anyone can add a facility — evacuation centers, hospitals, or community safe points — with a location, photos, and optional details.</p>
         </div>
-        <button id="openFacilityForm" class="btn-primary" style="width:auto">➕ Add Facility</button>
+        <button id="openFacilityForm" class="btn-primary">➕ Add Facility</button>
       </div>
       <div id="facilitiesList"></div>
     </div>

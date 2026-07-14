@@ -23,6 +23,7 @@ const App = {
     App.bindShareFromURL();
     App.bindSOS();
     App.bindThemeAndLang();
+    App.bindConnectivity();
 
     await App.refreshAll();
     App.startAutoRefresh();
@@ -41,22 +42,68 @@ const App = {
     App.facilities = Facilities.all;
     MapModule.renderFacilities(App.facilities, App.openFacilityDetail);
     App.renderFacilitiesList();
+    App.updateLastSynced();
   },
 
   startAutoRefresh() {
     // True real-time via Supabase's websocket subscriptions — refreshes
     // the instant any report/facility changes, instead of polling.
+    App.setConnectionStatus("connecting");
     try {
       App.realtimeChannel = Api.subscribeToChanges(
-        Utils.debounce(() => App.refreshAll(), 500)
+        Utils.debounce(() => App.refreshAll(), 500),
+        (status) => {
+          if (status === "SUBSCRIBED") App.setConnectionStatus("live");
+          else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") App.setConnectionStatus("offline");
+          else if (status === "CLOSED") App.setConnectionStatus(navigator.onLine ? "connecting" : "offline");
+        }
       );
     } catch (e) {
       console.warn("Realtime subscription unavailable:", e.message);
+      App.setConnectionStatus("offline");
     }
     // Slow fallback poll in case the websocket connection drops silently
     // (e.g. device sleep/wake, flaky network) — realtime should normally
     // make this redundant.
     App.refreshTimer = setInterval(() => App.refreshAll(), 120000);
+  },
+
+  // ---------------- Connectivity UI ----------------
+  bindConnectivity() {
+    window.addEventListener("online", () => {
+      document.getElementById("offlineBanner")?.setAttribute("hidden", "");
+      App.setConnectionStatus("connecting");
+      App.refreshAll();
+    });
+    window.addEventListener("offline", () => {
+      document.getElementById("offlineBanner")?.removeAttribute("hidden");
+      App.setConnectionStatus("offline");
+    });
+    if (!navigator.onLine) {
+      document.getElementById("offlineBanner")?.removeAttribute("hidden");
+      App.setConnectionStatus("offline");
+    }
+  },
+
+  setConnectionStatus(state) {
+    const pill = document.getElementById("connectionStatus");
+    if (!pill) return;
+    const label = pill.querySelector(".connection-label");
+    const copy = { live: "Live", connecting: "Connecting…", offline: "Offline" };
+    pill.classList.remove("connection-live", "connection-connecting", "connection-offline");
+    pill.classList.add(`connection-${state}`);
+    if (label) label.textContent = copy[state] || state;
+    pill.title =
+      state === "live"
+        ? "Connected — updates appear instantly"
+        : state === "offline"
+        ? "Not connected — showing the last data loaded"
+        : "Connecting…";
+  },
+
+  updateLastSynced() {
+    const el = document.getElementById("dashboardUpdated");
+    if (el) el.textContent = `Updated ${Utils.timeAgo(new Date().toISOString())}`;
   },
 
   renderCurrentView() {
@@ -70,12 +117,19 @@ const App = {
 
   renderReportListPanel(list) {
     const container = document.getElementById("reportListPanel");
+    const countEl = document.getElementById("reportListCount");
+    if (countEl) countEl.textContent = list.length;
     if (!container) return;
     container.innerHTML =
       list
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
         .map((r) => Dashboard.reportListItem(r))
-        .join("") || `<p class="empty-state">No reports match your filters.</p>`;
+        .join("") ||
+      `<div class="empty-state">
+         <span class="empty-state-icon">🗺️</span>
+         <span class="empty-state-title">No reports match your filters</span>
+         <span>Try clearing a filter, or be the first to report what's happening near you.</span>
+       </div>`;
   },
 
   // ---------------- Navigation ----------------
@@ -101,17 +155,22 @@ const App = {
     if (!container) return;
     const facilities = App.facilities || [];
     if (facilities.length === 0) {
-      container.innerHTML = `<p class="empty-state">No facilities yet. Be the first to add an evacuation center, hospital, or safe point near you.</p>`;
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="empty-state-icon">🏥</span>
+          <span class="empty-state-title">No facilities yet</span>
+          <span>Be the first to add an evacuation center, hospital, or safe point near you.</span>
+        </div>`;
       return;
     }
     container.innerHTML = facilities
       .map((f) => {
         const info = CONFIG.FACILITIES[f.type] || CONFIG.FACILITIES.evacuation;
         return `
-        <button class="report-list-item" data-open-facility="${f.facilityId}">
-          <span class="dot" style="background:${info.color}"></span>
+        <button class="report-list-item" style="--item-accent:${info.color}" data-open-facility="${f.facilityId}">
+          <span class="dot">${info.icon}</span>
           <div class="report-list-item-body">
-            <strong>${info.icon} ${Utils.escapeHTML(f.name)}</strong>
+            <strong>${Utils.escapeHTML(f.name)}</strong>
             <span class="muted">${info.label}${f.capacity ? ` · Capacity ${f.capacity}` : ""}</span>
           </div>
           <div class="report-list-item-meta">
@@ -206,11 +265,11 @@ const App = {
     const container = document.getElementById("reportSearchResults");
     if (!container) return;
     if (message) {
-      container.innerHTML = `<p class="empty-state">${Utils.escapeHTML(message)}</p>`;
+      container.innerHTML = `<div class="empty-state empty-state-compact"><span class="empty-state-icon">🔎</span><span>${Utils.escapeHTML(message)}</span></div>`;
       return;
     }
     if (!results || results.length === 0) {
-      container.innerHTML = `<p class="empty-state">No results found.</p>`;
+      container.innerHTML = `<div class="empty-state empty-state-compact"><span class="empty-state-icon">🔎</span><span>No results found.</span></div>`;
       return;
     }
     container.innerHTML = results
@@ -470,11 +529,11 @@ const App = {
     const container = document.getElementById("facilitySearchResults");
     if (!container) return;
     if (message) {
-      container.innerHTML = `<p class="empty-state">${Utils.escapeHTML(message)}</p>`;
+      container.innerHTML = `<div class="empty-state empty-state-compact"><span class="empty-state-icon">🔎</span><span>${Utils.escapeHTML(message)}</span></div>`;
       return;
     }
     if (!results || results.length === 0) {
-      container.innerHTML = `<p class="empty-state">No results found.</p>`;
+      container.innerHTML = `<div class="empty-state empty-state-compact"><span class="empty-state-icon">🔎</span><span>No results found.</span></div>`;
       return;
     }
     container.innerHTML = results

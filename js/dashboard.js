@@ -35,7 +35,14 @@ const Dashboard = {
 
   renderTypeChart(reports) {
     const canvas = document.getElementById("typeChart");
+    const overlay = document.getElementById("typeChartEmpty");
     if (!canvas || typeof Chart === "undefined") return;
+
+    if (overlay) overlay.hidden = reports.length > 0;
+    if (reports.length === 0) {
+      if (Dashboard.typeChart) Dashboard.typeChart.destroy();
+      return;
+    }
 
     const counts = {};
     Object.keys(CONFIG.EMERGENCY_TYPES).forEach((t) => (counts[t] = 0));
@@ -60,7 +67,14 @@ const Dashboard = {
 
   renderTimelineChart(reports) {
     const canvas = document.getElementById("timelineChart");
+    const overlay = document.getElementById("timelineChartEmpty");
     if (!canvas || typeof Chart === "undefined") return;
+
+    if (overlay) overlay.hidden = reports.length > 0;
+    if (reports.length === 0) {
+      if (Dashboard.timelineChart) Dashboard.timelineChart.destroy();
+      return;
+    }
 
     // Bucket reports by day for the last 14 days
     const days = [];
@@ -106,7 +120,7 @@ const Dashboard = {
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       .slice(0, 8);
     container.innerHTML = recent.map((r) => Dashboard.reportListItem(r)).join("") ||
-      `<p class="empty-state">No reports yet.</p>`;
+      `<div class="empty-state empty-state-compact"><span class="empty-state-icon">🕒</span><span>No reports yet.</span></div>`;
   },
 
   renderMostVerified(reports) {
@@ -116,17 +130,17 @@ const Dashboard = {
       .sort((a, b) => (b.upvotes || 0) - (a.upvotes || 0))
       .slice(0, 8);
     container.innerHTML = verified.map((r) => Dashboard.reportListItem(r, true)).join("") ||
-      `<p class="empty-state">No verified reports yet.</p>`;
+      `<div class="empty-state empty-state-compact"><span class="empty-state-icon">✔️</span><span>No verified reports yet.</span></div>`;
   },
 
   reportListItem(r, showUpvotes = false) {
     const typeInfo = CONFIG.EMERGENCY_TYPES[r.type] || CONFIG.EMERGENCY_TYPES.other;
     const statusInfo = CONFIG.STATUS[r.status] || CONFIG.STATUS.Active;
     return `
-      <button class="report-list-item" data-open-report="${r.reportId}">
-        <span class="dot" style="background:${typeInfo.color}"></span>
+      <button class="report-list-item" style="--item-accent:${typeInfo.color}" data-open-report="${r.reportId}">
+        <span class="dot">${typeInfo.icon}</span>
         <div class="report-list-item-body">
-          <strong>${typeInfo.icon} ${typeInfo.label}</strong>
+          <strong>${typeInfo.label}</strong>
           <span class="muted">${Utils.escapeHTML(r.description).slice(0, 60)}…</span>
         </div>
         <div class="report-list-item-meta">
